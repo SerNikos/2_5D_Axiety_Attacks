@@ -194,7 +194,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: dc7d791322225cc4bb60a0b7a1645631, type: 3}
+  m_Sprite: {fileID: -916965898, guid: b90713ab4d3d8d742ac86b61fed4bcf0, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -286,6 +286,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   speed: 5
+  spriteRenderer: {fileID: 0}
+  upSprite: {fileID: 0}
+  downSprite: {fileID: 0}
+  sideSprite: {fileID: 0}
+  anxietyBar: {fileID: 0}
+  maxAnxiety: 100
+  minAnxiety: 0
+  currentAnxiety: 0
 --- !u!4 &247824365
 Transform:
   m_ObjectHideFlags: 0
@@ -1197,6 +1205,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   speed: 5
+  spriteRenderer: {fileID: 0}
+  upSprite: {fileID: 427394614, guid: b90713ab4d3d8d742ac86b61fed4bcf0, type: 3}
+  downSprite: {fileID: 1363365112, guid: b90713ab4d3d8d742ac86b61fed4bcf0, type: 3}
+  sideSprite: {fileID: 427394614, guid: b90713ab4d3d8d742ac86b61fed4bcf0, type: 3}
+  anxietyBar: {fileID: 0}
+  maxAnxiety: 100
+  minAnxiety: 0
+  currentAnxiety: 0
 --- !u!4 &957745382
 Transform:
   m_ObjectHideFlags: 0
@@ -3034,7 +3050,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 135ea17b076a4ea4d841df62b6262e1f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  nameText: {fileID: 0}
   dialogueText: {fileID: 2140761600537632167}
+  dialogBoxAnimator: {fileID: 0}
+  picassoTeacherAnimator: {fileID: 0}
+  typingSpeed: 0.02
 --- !u!1 &7822745139382050923
 GameObject:
   m_ObjectHideFlags: 0

@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: Ser & Ash
-  productName: 2_5D Anxiety Attacks
+  productName: Panic at the Academy
   defaultCursor: {fileID: 2800000, guid: 69afc4c44c94d7c49aacaf1c94dc6ad0, type: 3}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}
@@ -40,9 +40,9 @@ PlayerSettings:
     width: 1
     height: 1
   m_SplashScreenLogos:
-  - logo: {fileID: -1549258701, guid: ebc2fdb6073a09849b3b5247c7916c3a, type: 3}
+  - logo: {fileID: -1888991814, guid: 18b766e4a9375064db96d5ec7f9b71b2, type: 3}
     duration: 2
-  m_VirtualRealitySplashScreen: {fileID: 2800000, guid: ebc2fdb6073a09849b3b5247c7916c3a,
+  m_VirtualRealitySplashScreen: {fileID: 2800000, guid: 4dbbb6b045987d1499280f537caf5fe4,
     type: 3}
   m_HolographicTrackingLossScreen: {fileID: 0}
   defaultScreenWidth: 1024
@@ -284,7 +284,7 @@ PlayerSettings:
   - m_BuildTarget: 
     m_Icons:
     - serializedVersion: 2
-      m_Icon: {fileID: 2800000, guid: ebc2fdb6073a09849b3b5247c7916c3a, type: 3}
+      m_Icon: {fileID: 2800000, guid: 4dbbb6b045987d1499280f537caf5fe4, type: 3}
       m_Width: 128
       m_Height: 128
       m_Kind: 0
@@ -783,7 +783,8 @@ PlayerSettings:
   ps4IncludedModules: []
   ps4attribVROutputEnabled: 0
   monoEnv: 
-  splashScreenBackgroundSourceLandscape: {fileID: 0}
+  splashScreenBackgroundSourceLandscape: {fileID: -1894091947, guid: eb20bb711b05126478b6f399179b32ec,
+    type: 3}
   splashScreenBackgroundSourcePortrait: {fileID: 0}
   blurSplashScreenBackground: 1
   spritePackerPolicy: 
