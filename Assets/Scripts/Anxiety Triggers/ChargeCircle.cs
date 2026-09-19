@@ -179,6 +179,12 @@ public class ChargeCircle : MonoBehaviour
     private void TriggerLoss()
     {
         isGameOver = true;
+
+        if (breathing != null)
+        {
+            breathing.DisableBreathing();
+        }
+
         CompleteAttempt(false);
 
         Debug.Log("Player lost! Released too early or failed to release in time.");

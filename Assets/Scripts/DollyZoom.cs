@@ -45,6 +45,7 @@ public class DollyZoom : MonoBehaviour
 
     // Current state
     private bool anxious = false;
+    private float anxietyVisualBlend;
 
     // Auto captured normal values
     private float normalDistance;
@@ -98,23 +99,32 @@ public class DollyZoom : MonoBehaviour
         float targetVerticalOffset = anxious ? anxietyVerticalOffset : 0f;
 
         // Smooth dolly movement
+        float deltaTime = Time.deltaTime;
+        float transition = Mathf.Clamp01(deltaTime * transitionSpeed);
+
         currentDistance = Mathf.Lerp(
             currentDistance,
             targetDistance,
-            Time.deltaTime * transitionSpeed
+            transition
         );
 
         // Smooth lens zoom
         currentFOV = Mathf.Lerp(
             currentFOV,
             targetFOV,
-            Time.deltaTime * transitionSpeed
+            transition
         );
 
         currentVerticalOffset = Mathf.Lerp(
             currentVerticalOffset,
             targetVerticalOffset,
-            Time.deltaTime * transitionSpeed
+            transition
+        );
+
+        anxietyVisualBlend = Mathf.Lerp(
+            anxietyVisualBlend,
+            anxious ? 1f : 0f,
+            transition
         );
 
         ApplyCamera();
@@ -134,13 +144,13 @@ public class DollyZoom : MonoBehaviour
         offset.y += currentVerticalOffset;
 
         // Apply shake on top
-        if (anxious && enableShake)
+        if (enableShake && anxietyVisualBlend > 0.001f)
         {
             float shakeX =
-                Mathf.Sin(Time.time * shakeSpeed) * shakeAmount;
+                Mathf.Sin(Time.time * shakeSpeed) * shakeAmount * anxietyVisualBlend;
 
             float shakeY =
-                Mathf.Cos(Time.time * shakeSpeed * 0.8f) * shakeAmount;
+                Mathf.Cos(Time.time * shakeSpeed * 0.8f) * shakeAmount * anxietyVisualBlend;
 
             offset.x += shakeX;
             offset.y += shakeY;

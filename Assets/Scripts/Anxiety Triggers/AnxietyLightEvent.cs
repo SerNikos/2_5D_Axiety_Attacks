@@ -194,6 +194,16 @@ public class AnxietyLightEvent : MonoBehaviour
     void HandleAttemptCompleted(bool success)
     {
         restoreFocusVisualsAfterPanelFade = true;
+
+        if (!success)
+        {
+            if (dollyZoom != null)
+            {
+                dollyZoom.DisableAnxiety();
+            }
+
+            StartCoroutine(EndSequence());
+        }
     }
 
     private void ExitFocusMode(bool restoreWorldColor = true)
@@ -213,6 +223,11 @@ public class AnxietyLightEvent : MonoBehaviour
     {
         if (!running || ending) return;
         ReduceAnxiety(50f);
+
+        if (dollyZoom != null)
+        {
+            dollyZoom.DisableAnxiety();
+        }
 
         // Stop accepting new mouse input as soon as the breathing cycle finishes.
         // The visual end sequence continues, but another click must not restart breathing.
@@ -239,9 +254,6 @@ public class AnxietyLightEvent : MonoBehaviour
 
         // ⏳ calm moment
         yield return new WaitForSecondsRealtime(4f);
-
-        // 🎥 zoom out
-        dollyZoom.DisableAnxiety();
 
         running = false;
         ending = false;

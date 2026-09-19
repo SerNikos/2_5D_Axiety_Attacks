@@ -166,18 +166,6 @@ public class GameManager : MonoBehaviour
     // =========================================================
     IEnumerator EndBreathSequence()
     {
-        // Emotional delay
-        yield return new WaitForSeconds(0.3f);
-
-        // World reaction delay
-        yield return new WaitForSeconds(1f);
-
-        // Disable anxiety effects
-        if (dollyZoom != null)
-        {
-            dollyZoom.DisableAnxiety();
-        }
-
         // Reduce anxiety smoothly
         float t = 0f;
 
