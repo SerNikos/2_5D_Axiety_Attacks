@@ -15,9 +15,17 @@ public class EnemyAI : MonoBehaviour
     [Header("Patrol Settings")]
     public float patrolRange = 8f;        // Ακτίνα γύρω από το αρχικό σημείο για την περιπολία
 
+    [Header("Visualization Settings")]
+    public bool showRadiusSpheres = true; // Ενεργοποίηση/Απενεργοποίηση των σφαιρών
+
     private float distanceToPlayer;
     private Vector3 originPos;            // Το κέντρο της περιοχής περιπολίας
     private NavMeshAgent agent;
+    private DepthSort2D depthSort;
+
+    // References για τα GameObjects των σφαιρών
+    private GameObject aggroObj;
+    private GameObject loseObj;
 
     public enum EnemyState
     {
@@ -38,6 +46,16 @@ public class EnemyAI : MonoBehaviour
             agent.speed = moveSpeed;
         }
 
+        depthSort = GetComponent<DepthSort2D>();
+
+        if (depthSort == null)
+        {
+            depthSort = gameObject.AddComponent<DepthSort2D>();
+        }
+
+        depthSort.SetSortDirection(DepthSort2D.SortDirection.CameraDepth);
+        depthSort.SetSpritesOnly(true);
+
         currentState = EnemyState.Patrol;
 
         // Δημιουργία των 2 ημιδιάφανων σφαιρών για το URP στο Runtime
@@ -51,6 +69,9 @@ public class EnemyAI : MonoBehaviour
 
     private void Update()
     {
+        // Ενημέρωση της ορατότητας των σφαιρών σε runtime αν αλλάξει η μεταβλητή από τον Inspector
+        UpdateSpheresVisibility();
+
         if (player == null) return;
 
         distanceToPlayer = Vector3.Distance(transform.position, player.position);
@@ -109,7 +130,7 @@ public class EnemyAI : MonoBehaviour
     private void CreateRuntimeSpheres()
     {
         // 1. Σφαίρα Aggro Radius (Κίτρινη)
-        GameObject aggroObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        aggroObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         aggroObj.name = "Runtime_AggroRadius";
         aggroObj.transform.SetParent(transform);
         aggroObj.transform.localPosition = Vector3.zero;
@@ -121,7 +142,7 @@ public class EnemyAI : MonoBehaviour
         SetTransparentMaterialURP(aggroRend, new Color(1f, 0.92f, 0.016f, 0.25f)); // Ημιδιάφανο κίτρινο
 
         // 2. Σφαίρα Lose Player Radius (Κόκκινη)
-        GameObject loseObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        loseObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         loseObj.name = "Runtime_LoseRadius";
         loseObj.transform.SetParent(transform);
         loseObj.transform.localPosition = Vector3.zero;
@@ -131,6 +152,23 @@ public class EnemyAI : MonoBehaviour
 
         Renderer loseRend = loseObj.GetComponent<Renderer>();
         SetTransparentMaterialURP(loseRend, new Color(1f, 0f, 0f, 0.15f)); // Ημιδιάφανο κόκκινο
+
+        // Αρχικός ορισμός ορατότητας βάσει της boolean μεταβλητής
+        UpdateSpheresVisibility();
+    }
+
+    // Ελέγχει και ενεργοποιεί/απενεργοποιεί τα GameObjects των σφαιρών
+    private void UpdateSpheresVisibility()
+    {
+        if (aggroObj != null && aggroObj.activeSelf != showRadiusSpheres)
+        {
+            aggroObj.SetActive(showRadiusSpheres);
+        }
+
+        if (loseObj != null && loseObj.activeSelf != showRadiusSpheres)
+        {
+            loseObj.SetActive(showRadiusSpheres);
+        }
     }
 
     // Δημιουργία ημιδιάφανου URP Material μέσω κώδικα

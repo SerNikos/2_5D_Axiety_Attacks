@@ -11,6 +11,7 @@ public class PlayerController : MonoBehaviour
     private Rigidbody rb;
     private Vector3 movement;
     private Vector3 facingDirection = Vector3.back;
+    private DepthSort2D depthSort;
 
     public Vector3 FacingDirection => facingDirection;
 
@@ -30,6 +31,15 @@ public class PlayerController : MonoBehaviour
     private void Awake()
     {
         playerControls = new PlayerControls();
+        depthSort = GetComponent<DepthSort2D>();
+
+        if (depthSort == null)
+        {
+            depthSort = gameObject.AddComponent<DepthSort2D>();
+        }
+
+        depthSort.SetSortDirection(DepthSort2D.SortDirection.CameraDepth);
+        depthSort.SetSpritesOnly(true);
     }
 
     private void OnEnable()

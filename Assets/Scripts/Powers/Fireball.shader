@@ -33,7 +33,6 @@ Shader "Custom/Fireball"
 			#pragma target 3.0
 			#pragma vertex Vert
 			#pragma fragment Frag
-
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
 			struct Attributes
@@ -62,6 +61,27 @@ Shader "Custom/Fireball"
 				half _Alpha;
 			CBUFFER_END
 
+			// Συνάρτηση παραγωγής τυχαίων τιμών για αποφυγή παράλληλων γραμμών
+			float hash(float2 p)
+			{
+				p = frac(p * float2(123.34f, 456.21f));
+				p += dot(p, p + 45.32f);
+				return frac(p.x * p.y);
+			}
+
+			// Smooth Value Noise 2D
+			float ValueNoise(float2 st)
+			{
+				float2 i = floor(st);
+				float2 f = frac(st);
+
+				// Smoothstep παρεμβολή για ομαλή μετάβαση
+				float2 u = f * f * (3.0f - 2.0f * f);
+
+				return lerp(lerp(hash(i + float2(0.0f, 0.0f)), hash(i + float2(1.0f, 0.0f)), u.x),
+							lerp(hash(i + float2(0.0f, 1.0f)), hash(i + float2(1.0f, 1.0f)), u.x), u.y);
+			}
+
 			Varyings Vert(Attributes input)
 			{
 				Varyings output;
@@ -81,11 +101,14 @@ Shader "Custom/Fireball"
 				half3 viewDirectionWS = SafeNormalize(GetWorldSpaceViewDir(input.positionWS));
 				half fresnel = pow(1.0h - saturate(dot(normalWS, viewDirectionWS)), _RimPower);
 
-				half2 flameUV = input.uv * _NoiseScale;
-				half time = _Time.y * _ScrollSpeed;
-				half waveA = sin(flameUV.x * 6.0h + time);
-				half waveB = sin(flameUV.y * 8.0h - time * 1.35h + waveA * 1.5h);
-				half flamePattern = saturate(0.5h + waveB * 0.5h);
+				// Χρήση Noise αντί για ημίτονα (sin) για να μην εμφανίζονται παράλληλες λωρίδες
+				float2 st = input.uv * _NoiseScale;
+				float time = _Time.y * _ScrollSpeed;
+
+				// Διπλό στρώμα noise (fbm) για φυσικό στροβιλισμό
+				float n1 = ValueNoise(st + float2(time * 0.5f, time * 0.8f));
+				float n2 = ValueNoise(st * 2.0f - float2(time * 0.9f, time * 0.4f));
+				half flamePattern = saturate((n1 + n2 * 0.5f) / 1.5f);
 
 				half core = saturate(1.0h - fresnel + flamePattern * 0.35h);
 				half3 flameColor = lerp(_FlameColor.rgb, _CoreColor.rgb, core);

@@ -9,6 +9,7 @@ public class FireballProjectile : MonoBehaviour
     private float homingSpeed;
     private float homingTurnSpeed;
     private float knockbackDuration;
+    private GameObject impactEffectPrefab;
     private bool hasHit;
 
     public void Configure(float force, GameObject fireballOwner)
@@ -24,12 +25,25 @@ public class FireballProjectile : MonoBehaviour
         float turnSpeed,
         float duration)
     {
+        Configure(force, fireballOwner, homingTarget, speed, turnSpeed, duration, null);
+    }
+
+    public void Configure(
+        float force,
+        GameObject fireballOwner,
+        Transform homingTarget,
+        float speed,
+        float turnSpeed,
+        float duration,
+        GameObject fireballImpactEffectPrefab)
+    {
         knockbackForce = Mathf.Max(0f, force);
         owner = fireballOwner;
         target = homingTarget;
         homingSpeed = Mathf.Max(0f, speed);
         homingTurnSpeed = Mathf.Max(0f, turnSpeed);
         knockbackDuration = Mathf.Max(0.01f, duration);
+        impactEffectPrefab = fireballImpactEffectPrefab;
         projectileRigidbody = GetComponent<Rigidbody>();
         IgnoreOwnerCollisions();
     }
@@ -81,15 +95,18 @@ public class FireballProjectile : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        HandleHit(collision.collider);
+        Vector3 impactPoint = collision.contactCount > 0
+            ? collision.GetContact(0).point
+            : transform.position;
+        HandleHit(collision.collider, impactPoint);
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        HandleHit(other);
+        HandleHit(other, other.ClosestPoint(transform.position));
     }
 
-    private void HandleHit(Collider hitCollider)
+    private void HandleHit(Collider hitCollider, Vector3 impactPoint)
     {
         if (hasHit)
         {
@@ -118,8 +135,20 @@ public class FireballProjectile : MonoBehaviour
 
         direction.Normalize();
         PushEnemy(enemy, direction);
+        SpawnImpactEffect(impactPoint);
         hasHit = true;
         Destroy(gameObject);
+    }
+
+    private void SpawnImpactEffect(Vector3 impactPoint)
+    {
+        if (impactEffectPrefab != null)
+        {
+            Instantiate(impactEffectPrefab, impactPoint, Quaternion.identity);
+            return;
+        }
+
+        FireballExplosionEffect.Spawn(impactPoint);
     }
 
     private Transform FindTaggedEnemy(Transform start)

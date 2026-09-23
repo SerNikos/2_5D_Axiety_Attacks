@@ -8,6 +8,9 @@ public class Fireballl : MonoBehaviour
     [SerializeField] private float releaseSpeed = 12f;
     [SerializeField] private float maxLifetime = 5f;
 
+    [Header("Impact")]
+    [SerializeField] private GameObject impactEffectPrefab;
+
     [Header("Material")]
     [SerializeField] private bool useFireballShader = true;
     [SerializeField] private Color shaderCoreColor = new Color(1f, 0.85f, 0.2f);
@@ -87,6 +90,8 @@ public class Fireballl : MonoBehaviour
             transform.position + releaseDirection * spawnDistance,
             Quaternion.LookRotation(releaseDirection));
 
+        ConfigureFireballDepthSorting(chargingFireball);
+
         originalScale = chargingFireball.transform.localScale;
         chargingFireball.transform.localScale = originalScale * startingScale;
         chargeElapsed = 0f;
@@ -139,7 +144,8 @@ public class Fireballl : MonoBehaviour
             target,
             releaseSpeed,
             homingTurnSpeed,
-            knockbackDuration);
+            knockbackDuration,
+            impactEffectPrefab);
 
         chargingFireball.transform.localScale = originalScale;
         UpdateShaderEmission(1f);
@@ -151,6 +157,20 @@ public class Fireballl : MonoBehaviour
         chargingFireball = null;
         chargingRigidbody = null;
         fireballMaterials = null;
+    }
+
+    private void ConfigureFireballDepthSorting(GameObject fireball)
+    {
+        DepthSort2D depthSort = fireball.GetComponent<DepthSort2D>();
+
+        if (depthSort == null)
+        {
+            depthSort = fireball.AddComponent<DepthSort2D>();
+        }
+
+        depthSort.SetSortDirection(DepthSort2D.SortDirection.CameraDepth);
+        depthSort.SetSpritesOnly(false);
+        depthSort.ClearSortPositionOverride();
     }
 
     private void ApplyFireballShader()
