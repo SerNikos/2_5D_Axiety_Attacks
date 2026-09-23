@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.VFX; // Required for Visual Effect Graph
+using Cinemachine;
 
 public class TriggerLightning : MonoBehaviour
 {
@@ -27,15 +28,20 @@ public class TriggerLightning : MonoBehaviour
     [SerializeField, Min(0f)] private float lightningSortingDuration = 0.75f;
     [SerializeField] private int lightningSortingPriority = 20;
 
+    [Header("Camera Tilt")]
+    [SerializeField, Min(0f)] private float cameraTiltImpulse = 0.06f;
+
     private PlayerController playerController;
     private Vector3 lastFacingDirection = Vector3.forward;
     private Renderer lightningRenderer;
     private DepthSort2D lightningDepthSort;
     private Coroutine sortingPriorityCoroutine;
+    private CinemachineImpulseSource cameraImpulseSource;
 
     private void Awake()
     {
         playerController = GetComponentInParent<PlayerController>();
+        SetupCameraImpulse();
 
         lightningRenderer = GetComponent<Renderer>();
         if (lightningRenderer != null)
@@ -83,7 +89,100 @@ public class TriggerLightning : MonoBehaviour
             }
 
             StartImpactKnockback();
+            TriggerCameraTilt();
         }
+    }
+
+    private void SetupCameraImpulse()
+    {
+        cameraImpulseSource = GetComponent<CinemachineImpulseSource>();
+        if (cameraImpulseSource == null)
+        {
+            cameraImpulseSource = gameObject.AddComponent<CinemachineImpulseSource>();
+        }
+
+        ConfigureImpulseSourceDefaults(cameraImpulseSource);
+
+        EnsureImpulseListenerExists();
+    }
+
+    private void EnsureImpulseListenerExists()
+    {
+        CinemachineImpulseListener[] listeners = FindObjectsOfType<CinemachineImpulseListener>(true);
+        if (listeners != null && listeners.Length > 0)
+        {
+            for (int i = 0; i < listeners.Length; i++)
+            {
+                ConfigureImpulseListenerDefaults(listeners[i]);
+            }
+
+            return;
+        }
+
+        CinemachineVirtualCameraBase[] virtualCameras = FindObjectsOfType<CinemachineVirtualCameraBase>(true);
+        for (int i = 0; i < virtualCameras.Length; i++)
+        {
+            if (virtualCameras[i].GetComponent<CinemachineImpulseListener>() == null)
+            {
+                CinemachineImpulseListener listener = virtualCameras[i].gameObject.AddComponent<CinemachineImpulseListener>();
+                ConfigureImpulseListenerDefaults(listener);
+            }
+        }
+    }
+
+    private void ConfigureImpulseSourceDefaults(CinemachineImpulseSource source)
+    {
+        if (source == null)
+        {
+            return;
+        }
+
+        if (source.m_ImpulseDefinition == null)
+        {
+            source.m_ImpulseDefinition = new CinemachineImpulseDefinition();
+        }
+
+        source.m_ImpulseDefinition.m_ImpulseChannel = 1;
+        source.m_ImpulseDefinition.m_ImpulseShape = CinemachineImpulseDefinition.ImpulseShapes.Bump;
+        source.m_ImpulseDefinition.m_CustomImpulseShape = source.m_ImpulseDefinition.m_CustomImpulseShape ?? new AnimationCurve();
+        source.m_ImpulseDefinition.m_ImpulseDuration = 0.2f;
+        source.m_ImpulseDefinition.m_ImpulseType = CinemachineImpulseDefinition.ImpulseTypes.Uniform;
+        source.m_ImpulseDefinition.m_DissipationDistance = 100f;
+        source.m_ImpulseDefinition.m_DissipationRate = 0.25f;
+        source.m_ImpulseDefinition.m_PropagationSpeed = 343f;
+        source.m_DefaultVelocity = Vector3.right;
+    }
+
+    private void ConfigureImpulseListenerDefaults(CinemachineImpulseListener listener)
+    {
+        if (listener == null)
+        {
+            return;
+        }
+
+        if (listener.m_ChannelMask == 0)
+        {
+            listener.m_ChannelMask = 1;
+        }
+
+        if (listener.m_Gain <= 0f)
+        {
+            listener.m_Gain = 1f;
+        }
+
+        listener.m_ApplyAfter = CinemachineCore.Stage.Noise;
+        listener.m_Use2DDistance = false;
+        listener.m_UseCameraSpace = true;
+    }
+
+    private void TriggerCameraTilt()
+    {
+        if (cameraImpulseSource == null || cameraTiltImpulse <= 0f)
+        {
+            return;
+        }
+
+        cameraImpulseSource.GenerateImpulseWithVelocity(Vector3.right * cameraTiltImpulse);
     }
 
     private void UpdateLightningRotation()
