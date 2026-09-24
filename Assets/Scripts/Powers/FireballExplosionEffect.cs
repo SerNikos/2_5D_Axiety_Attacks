@@ -7,6 +7,7 @@ public class FireballExplosionEffect : MonoBehaviour
     private const float EndGlowScale = 2f;
     private const float GlowDeclineRate = 2.0f; // Πολύ πιο γρήγορη πτώση emission
     private const float ParticleBurstRate = 110;
+    private const int ExplosionSortingPriority = -20;
 
     // Χρόνος (σε δευτερόλεπτα) που ξεκινάει το dissolve της σφαίρας
     private const float DissolveStartTime = 0.12f;
@@ -34,6 +35,7 @@ public class FireballExplosionEffect : MonoBehaviour
         CreateMainParticles();
         CreateSecondaryParticles();
         CreateGlow();
+        ConfigureDepthSorting();
     }
 
     private void Update()
@@ -226,6 +228,20 @@ public class FireballExplosionEffect : MonoBehaviour
         {
             glowRenderer.sharedMaterial = glowMaterial;
         }
+    }
+
+    private void ConfigureDepthSorting()
+    {
+        DepthSort2D depthSort = GetComponent<DepthSort2D>();
+
+        if (depthSort == null)
+        {
+            depthSort = gameObject.AddComponent<DepthSort2D>();
+        }
+
+        depthSort.SetSortDirection(DepthSort2D.SortDirection.CameraDepth);
+        depthSort.SetSpritesOnly(false);
+        depthSort.SetOrderOffset(ExplosionSortingPriority);
     }
 
     private Material CreateMainParticleMaterial()

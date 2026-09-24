@@ -10,6 +10,11 @@ public class FireballProjectile : MonoBehaviour
     private float homingTurnSpeed;
     private float knockbackDuration;
     private GameObject impactEffectPrefab;
+    private bool affectGrassOnImpact;
+    private float grassImpactRadius;
+    private float grassImpactPushRate;
+    private float grassImpactMaxStrength;
+    private float grassImpactDuration;
     private bool hasHit;
 
     public void Configure(float force, GameObject fireballOwner)
@@ -46,6 +51,20 @@ public class FireballProjectile : MonoBehaviour
         impactEffectPrefab = fireballImpactEffectPrefab;
         projectileRigidbody = GetComponent<Rigidbody>();
         IgnoreOwnerCollisions();
+    }
+
+    public void ConfigureGrassImpact(
+        bool affectGrass,
+        float radius,
+        float pushRate,
+        float maxStrength,
+        float duration)
+    {
+        affectGrassOnImpact = affectGrass;
+        grassImpactRadius = Mathf.Max(0f, radius);
+        grassImpactPushRate = Mathf.Max(0f, pushRate);
+        grassImpactMaxStrength = Mathf.Max(0f, maxStrength);
+        grassImpactDuration = Mathf.Max(0.01f, duration);
     }
 
     private void FixedUpdate()
@@ -135,6 +154,7 @@ public class FireballProjectile : MonoBehaviour
 
         direction.Normalize();
         PushEnemy(enemy, direction);
+        ApplyGrassImpact(impactPoint);
         SpawnImpactEffect(impactPoint);
         hasHit = true;
         Destroy(gameObject);
@@ -149,6 +169,21 @@ public class FireballProjectile : MonoBehaviour
         }
 
         FireballExplosionEffect.Spawn(impactPoint);
+    }
+
+    private void ApplyGrassImpact(Vector3 impactPoint)
+    {
+        if (!affectGrassOnImpact || GrassManager.Instance == null)
+        {
+            return;
+        }
+
+        GrassManager.Instance.ApplyImpact(
+            impactPoint,
+            grassImpactRadius,
+            grassImpactPushRate,
+            grassImpactMaxStrength,
+            grassImpactDuration);
     }
 
     private Transform FindTaggedEnemy(Transform start)

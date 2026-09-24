@@ -27,6 +27,13 @@ public class GrassInteractor : MonoBehaviour
     public bool DisableWhenIdle => disableWhenIdle;
     public bool IsInfluencing => IsMoving;
 
+    public void ConfigureRuntime(float configuredPushRate, float configuredMaxPushStrength, float configuredDetectionRadius)
+    {
+        pushRate = Mathf.Max(0f, configuredPushRate);
+        maxPushStrength = Mathf.Max(0f, configuredMaxPushStrength);
+        detectionRadius = Mathf.Max(0f, configuredDetectionRadius);
+    }
+
     public bool IsMoving
     {
         get

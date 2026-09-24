@@ -976,6 +976,35 @@ public class GrassManager : MonoBehaviour
         interactorMotionStates.Remove(interactor);
     }
 
+    public void ApplyImpact(
+        Vector3 worldPosition,
+        float radius,
+        float pushRate,
+        float maxStrength,
+        float duration)
+    {
+        if (!isActiveAndEnabled || strengthGrid == null || activeCellFlags == null)
+            return;
+
+        if (!mapInitialized)
+        {
+            if (TryGetMapCenterAnchor(out Vector2 anchorCenterXZ))
+                mapCenter = anchorCenterXZ;
+            else
+                mapCenter = new Vector2(worldPosition.x, worldPosition.z);
+
+            mapInitialized = true;
+        }
+
+        StampInteractor(
+            worldPosition,
+            Mathf.Max(0f, radius),
+            Mathf.Max(0f, pushRate),
+            Mathf.Max(0f, maxStrength),
+            Mathf.Max(0.01f, duration),
+            Time.time);
+    }
+
     public void ResetGrass()
     {
         interactorMotionStates.Clear();

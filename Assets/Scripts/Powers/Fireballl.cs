@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.UI;
+using DG.Tweening;
 
 public class Fireballl : MonoBehaviour
 {
@@ -10,6 +12,16 @@ public class Fireballl : MonoBehaviour
 
     [Header("Impact")]
     [SerializeField] private GameObject impactEffectPrefab;
+
+    [Header("Grass Interaction")]
+    [SerializeField] private bool affectGrass = true;
+    [SerializeField, Min(0f)] private float grassPathPushRate = 6f;
+    [SerializeField, Min(0f)] private float grassPathMaxStrength = 3f;
+    [SerializeField, Min(0f)] private float grassPathRadius = 1f;
+    [SerializeField, Min(0f)] private float grassImpactRadius = 1.5f;
+    [SerializeField, Min(0f)] private float grassImpactPushRate = 10f;
+    [SerializeField, Min(0f)] private float grassImpactMaxStrength = 3f;
+    [SerializeField, Min(0.01f)] private float grassImpactDuration = 0.35f;
 
     [Header("Material")]
     [SerializeField] private bool useFireballShader = true;
@@ -38,21 +50,36 @@ public class Fireballl : MonoBehaviour
     [SerializeField] private float pulseSpeed = 8f;
     [SerializeField, Range(0f, 0.25f)] private float pulseAmount = 0.08f;
 
+    [Header("Cooldown")]
+    [SerializeField] private Image fireballCooldownImage;
+    [SerializeField] private float fireballCooldownDuration = 1f;
+
     private GameObject chargingFireball;
     private Rigidbody chargingRigidbody;
     private Vector3 originalScale;
     private Vector3 releaseDirection;
     private Material[] fireballMaterials;
     private float chargeElapsed;
+    private float cooldownRemaining;
+    private bool fireballOnCooldown;
     private PlayerController playerController;
 
     private void Awake()
     {
         playerController = GetComponent<PlayerController>();
+
+        if (fireballCooldownImage != null)
+        {
+            fireballCooldownImage.type = Image.Type.Filled;
+            fireballCooldownImage.fillMethod = Image.FillMethod.Radial360;
+            fireballCooldownImage.fillAmount = 1f;
+        }
     }
 
     private void Update()
     {
+        UpdateCooldown();
+
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
         {
             CreateFireball();
@@ -73,7 +100,7 @@ public class Fireballl : MonoBehaviour
 
     private void CreateFireball()
     {
-        if (chargingFireball != null)
+        if (chargingFireball != null || fireballOnCooldown)
         {
             return;
         }
@@ -105,6 +132,48 @@ public class Fireballl : MonoBehaviour
 
         chargingRigidbody.isKinematic = true;
         chargingRigidbody.detectCollisions = false;
+
+        StartCooldown();
+    }
+
+    private void StartCooldown()
+    {
+        cooldownRemaining = Mathf.Max(0f, fireballCooldownDuration);
+        fireballOnCooldown = cooldownRemaining > 0f;
+
+        if (fireballCooldownImage == null)
+        {
+            return;
+        }
+
+        fireballCooldownImage.DOKill();
+        fireballCooldownImage.fillAmount = 0f;
+
+        if (cooldownRemaining <= 0f)
+        {
+            fireballCooldownImage.fillAmount = 1f;
+            return;
+        }
+
+        fireballCooldownImage
+            .DOFillAmount(1f, cooldownRemaining)
+            .SetEase(Ease.Linear);
+    }
+
+    private void UpdateCooldown()
+    {
+        if (!fireballOnCooldown)
+        {
+            return;
+        }
+
+        cooldownRemaining -= Time.deltaTime;
+
+        if (cooldownRemaining <= 0f)
+        {
+            cooldownRemaining = 0f;
+            fireballOnCooldown = false;
+        }
     }
 
     private void UpdateChargingFireball()
@@ -137,6 +206,14 @@ public class Fireballl : MonoBehaviour
             projectile = chargingFireball.AddComponent<FireballProjectile>();
         }
 
+        ConfigureFireballGrass(chargingFireball);
+        projectile.ConfigureGrassImpact(
+            affectGrass,
+            grassImpactRadius,
+            grassImpactPushRate,
+            grassImpactMaxStrength,
+            grassImpactDuration);
+
         Transform target = FindClosestEnemy(releaseDirection);
         projectile.Configure(
             knockbackForce,
@@ -157,6 +234,25 @@ public class Fireballl : MonoBehaviour
         chargingFireball = null;
         chargingRigidbody = null;
         fireballMaterials = null;
+    }
+
+    private void ConfigureFireballGrass(GameObject fireball)
+    {
+        if (!affectGrass)
+        {
+            return;
+        }
+
+        GrassInteractor grassInteractor = fireball.GetComponent<GrassInteractor>();
+        if (grassInteractor == null)
+        {
+            grassInteractor = fireball.AddComponent<GrassInteractor>();
+        }
+
+        grassInteractor.ConfigureRuntime(
+            grassPathPushRate,
+            grassPathMaxStrength,
+            grassPathRadius);
     }
 
     private void ConfigureFireballDepthSorting(GameObject fireball)

@@ -1,8 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.VFX; // Required for Visual Effect Graph
 using Cinemachine;
+using DG.Tweening;
 
 public class TriggerLightning : MonoBehaviour
 {
@@ -15,10 +17,17 @@ public class TriggerLightning : MonoBehaviour
 
     [Header("Impact Knockback")]
     [SerializeField] private Transform impactPoint;
-    [SerializeField, Min(0f)] private float impactRadius = 3f;
+    [SerializeField, Min(0f)] private float impactRadius = 12f;
     [SerializeField, Min(0f)] private float impactForce = 50f;
     [SerializeField, Min(0.01f)] private float impactDuration = 0.5f;
     [SerializeField, Min(0f)] private float impactDelay = 0.15f;
+
+    [Header("Grass Interaction")]
+    [SerializeField] private bool affectGrass = true;
+    [SerializeField, Min(0f)] private float grassImpactRadius = 3f;
+    [SerializeField, Min(0f)] private float grassImpactPushRate = 10f;
+    [SerializeField, Min(0f)] private float grassImpactMaxStrength = 3f;
+    [SerializeField, Min(0.01f)] private float grassImpactDuration = 0.5f;
 
     [Header("Facing Placement")]
     [SerializeField, Min(0f)] private float lightningDistance = 2f;
@@ -31,12 +40,18 @@ public class TriggerLightning : MonoBehaviour
     [Header("Camera Tilt")]
     [SerializeField, Min(0f)] private float cameraTiltImpulse = 0.06f;
 
+    [Header("Cooldown")]
+    [SerializeField] private Image lightningCooldownImage;
+    [SerializeField, Min(0f)] private float lightningCooldownDuration = 3f;
+
     private PlayerController playerController;
     private Vector3 lastFacingDirection = Vector3.forward;
     private Renderer lightningRenderer;
     private DepthSort2D lightningDepthSort;
     private Coroutine sortingPriorityCoroutine;
     private CinemachineImpulseSource cameraImpulseSource;
+    private float cooldownRemaining;
+    private bool lightningOnCooldown;
 
     private void Awake()
     {
@@ -57,15 +72,29 @@ public class TriggerLightning : MonoBehaviour
             lightningDepthSort.SetSortDirection(DepthSort2D.SortDirection.CameraDepth);
             lightningDepthSort.SetSpritesOnly(false);
         }
+
+        if (lightningCooldownImage != null)
+        {
+            lightningCooldownImage.type = Image.Type.Filled;
+            lightningCooldownImage.fillMethod = Image.FillMethod.Radial360;
+            lightningCooldownImage.fillAmount = 1f;
+        }
     }
 
     private void Update()
     {
         UpdateLightningRotation();
+        UpdateCooldown();
 
-        // Check if the 'L' key is pressed down
-        if (Input.GetKeyDown(KeyCode.L))
+        if (Input.GetKeyDown(KeyCode.Alpha2) ||
+            Input.GetKeyDown(KeyCode.Keypad2) ||
+            Input.GetKeyDown(KeyCode.L))
         {
+            if (lightningOnCooldown)
+            {
+                return;
+            }
+
             // Trigger Visual Effect
             if (lightningEffect != null)
             {
@@ -77,6 +106,7 @@ public class TriggerLightning : MonoBehaviour
             }
 
             StartLightningSortingPriority();
+            StartGrassImpact();
 
             // Play Sound Effect
             if (audioSource != null && lightningSound != null)
@@ -90,6 +120,47 @@ public class TriggerLightning : MonoBehaviour
 
             StartImpactKnockback();
             TriggerCameraTilt();
+            StartCooldown();
+        }
+    }
+
+    private void StartCooldown()
+    {
+        cooldownRemaining = Mathf.Max(0f, lightningCooldownDuration);
+        lightningOnCooldown = cooldownRemaining > 0f;
+
+        if (lightningCooldownImage == null)
+        {
+            return;
+        }
+
+        lightningCooldownImage.DOKill();
+        lightningCooldownImage.fillAmount = 0f;
+
+        if (cooldownRemaining <= 0f)
+        {
+            lightningCooldownImage.fillAmount = 1f;
+            return;
+        }
+
+        lightningCooldownImage
+            .DOFillAmount(1f, cooldownRemaining)
+            .SetEase(Ease.Linear);
+    }
+
+    private void UpdateCooldown()
+    {
+        if (!lightningOnCooldown)
+        {
+            return;
+        }
+
+        cooldownRemaining -= Time.deltaTime;
+
+        if (cooldownRemaining <= 0f)
+        {
+            cooldownRemaining = 0f;
+            lightningOnCooldown = false;
         }
     }
 
@@ -249,6 +320,36 @@ public class TriggerLightning : MonoBehaviour
         StartCoroutine(ApplyImpactKnockbackAfterDelay());
     }
 
+    private void ApplyGrassImpact()
+    {
+        if (!affectGrass || GrassManager.Instance == null)
+        {
+            return;
+        }
+
+        GrassManager.Instance.ApplyImpact(
+            GetImpactPosition(),
+            grassImpactRadius,
+            grassImpactPushRate,
+            grassImpactMaxStrength,
+            grassImpactDuration);
+    }
+
+    private void StartGrassImpact()
+    {
+        StartCoroutine(ApplyGrassImpactAfterDelay());
+    }
+
+    private IEnumerator ApplyGrassImpactAfterDelay()
+    {
+        if (impactDelay > 0f)
+        {
+            yield return new WaitForSeconds(impactDelay);
+        }
+
+        ApplyGrassImpact();
+    }
+
     private IEnumerator ApplyImpactKnockbackAfterDelay()
     {
         if (impactDelay > 0f)
@@ -379,6 +480,14 @@ public class TriggerLightning : MonoBehaviour
         }
 
         knockback.Push(direction, impactForce, impactDuration);
+    }
+
+    private void OnDestroy()
+    {
+        if (lightningCooldownImage != null)
+        {
+            lightningCooldownImage.DOKill();
+        }
     }
 
     private void OnDrawGizmosSelected()
