@@ -161,6 +161,10 @@ public class AnxietyLightEvent : MonoBehaviour
         anxiety = 0f;
 
         breathing.EnableBreathing();
+        if (chargeCircle != null)
+        {
+            chargeCircle.ShowClickAndHoldPrompt();
+        }
         dollyZoom.EnableAnxiety();
 
         StartCoroutine(FadeUI(1f));

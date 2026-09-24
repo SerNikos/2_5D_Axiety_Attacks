@@ -24,7 +24,7 @@ public class TriggerLightning : MonoBehaviour
 
     [Header("Grass Interaction")]
     [SerializeField] private bool affectGrass = true;
-    [SerializeField, Min(0f)] private float grassImpactRadius = 3f;
+    [SerializeField, Min(0f)] private float grassImpactRadius = 5f;
     [SerializeField, Min(0f)] private float grassImpactPushRate = 10f;
     [SerializeField, Min(0f)] private float grassImpactMaxStrength = 3f;
     [SerializeField, Min(0.01f)] private float grassImpactDuration = 0.5f;
@@ -44,6 +44,9 @@ public class TriggerLightning : MonoBehaviour
     [SerializeField] private Image lightningCooldownImage;
     [SerializeField, Min(0f)] private float lightningCooldownDuration = 3f;
 
+    [Header("Anxiety Availability")]
+    [SerializeField] private AnxietyBar anxietyBar;
+
     private PlayerController playerController;
     private Vector3 lastFacingDirection = Vector3.forward;
     private Renderer lightningRenderer;
@@ -56,6 +59,12 @@ public class TriggerLightning : MonoBehaviour
     private void Awake()
     {
         playerController = GetComponentInParent<PlayerController>();
+
+        if (anxietyBar == null)
+        {
+            anxietyBar = FindObjectOfType<AnxietyBar>();
+        }
+
         SetupCameraImpulse();
 
         lightningRenderer = GetComponent<Renderer>();
@@ -90,6 +99,11 @@ public class TriggerLightning : MonoBehaviour
             Input.GetKeyDown(KeyCode.Keypad2) ||
             Input.GetKeyDown(KeyCode.L))
         {
+            if (anxietyBar != null && !anxietyBar.SpellsAvailable)
+            {
+                return;
+            }
+
             if (lightningOnCooldown)
             {
                 return;

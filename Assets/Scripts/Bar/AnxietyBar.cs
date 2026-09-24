@@ -27,6 +27,7 @@ public class AnxietyBar : MonoBehaviour
     private bool spellsLocked;
 
     public float Current => currentAnxiety;
+    public bool SpellsAvailable => !spellsLocked;
 
     private void Start()
     {

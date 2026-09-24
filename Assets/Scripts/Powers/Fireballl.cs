@@ -54,6 +54,9 @@ public class Fireballl : MonoBehaviour
     [SerializeField] private Image fireballCooldownImage;
     [SerializeField] private float fireballCooldownDuration = 1f;
 
+    [Header("Anxiety Availability")]
+    [SerializeField] private AnxietyBar anxietyBar;
+
     private GameObject chargingFireball;
     private Rigidbody chargingRigidbody;
     private Vector3 originalScale;
@@ -67,6 +70,11 @@ public class Fireballl : MonoBehaviour
     private void Awake()
     {
         playerController = GetComponent<PlayerController>();
+
+        if (anxietyBar == null)
+        {
+            anxietyBar = FindObjectOfType<AnxietyBar>();
+        }
 
         if (fireballCooldownImage != null)
         {
@@ -100,6 +108,11 @@ public class Fireballl : MonoBehaviour
 
     private void CreateFireball()
     {
+        if (anxietyBar != null && !anxietyBar.SpellsAvailable)
+        {
+            return;
+        }
+
         if (chargingFireball != null || fireballOnCooldown)
         {
             return;

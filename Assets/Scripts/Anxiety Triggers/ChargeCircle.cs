@@ -215,6 +215,11 @@ public class ChargeCircle : MonoBehaviour
         ResetUI();
     }
 
+    public void ShowClickAndHoldPrompt()
+    {
+        UpdateActionText("CLICK & HOLD", startColor);
+    }
+
     private void CompleteAttempt(bool success)
     {
         if (attemptCompleted) return;

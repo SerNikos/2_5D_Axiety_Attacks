@@ -2679,6 +2679,7 @@ MonoBehaviour:
   pulseAmount: 0.08
   fireballCooldownImage: {fileID: 427824811}
   fireballCooldownDuration: 1
+  anxietyBar: {fileID: 305631653}
 --- !u!1 &276509372
 GameObject:
   m_ObjectHideFlags: 0
@@ -2899,7 +2900,10 @@ MonoBehaviour:
     m_NumColorKeys: 3
     m_NumAlphaKeys: 3
   smoothSpeed: 6
-  spellImages: []
+  spellImages:
+  - {fileID: 427824811}
+  - {fileID: 860851348}
+  - {fileID: 1545741445}
   spellLockThreshold: 0.5
   grayedOutSpellColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   spellColorFadeDuration: 0.3
@@ -24796,8 +24800,9 @@ MonoBehaviour:
   lightningSortingDuration: 0.75
   lightningSortingPriority: 20
   cameraTiltImpulse: 0.3
-  lightningCooldownImage: {fileID: 0}
+  lightningCooldownImage: {fileID: 860851348}
   lightningCooldownDuration: 3
+  anxietyBar: {fileID: 305631653}
 --- !u!43 &2039507295
 Mesh:
   m_ObjectHideFlags: 0
