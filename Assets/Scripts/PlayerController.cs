@@ -40,6 +40,11 @@ public class PlayerController : MonoBehaviour
 
         depthSort.SetSortDirection(DepthSort2D.SortDirection.CameraDepth);
         depthSort.SetSpritesOnly(true);
+
+        if (GetComponent<VineRootPower>() == null)
+        {
+            gameObject.AddComponent<VineRootPower>();
+        }
     }
 
     private void OnEnable()

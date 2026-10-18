@@ -5,9 +5,26 @@ using UnityEngine.AI;
 public class EnemyKnockback : MonoBehaviour
 {
     private Coroutine activeKnockback;
+    private NavMeshAgent activeAgent;
+    private bool agentWasStoppedBeforeKnockback;
 
     public void Push(Vector3 direction, float force, float duration)
     {
+        EnemyAI enemyAI = GetComponent<EnemyAI>();
+        if (enemyAI == null)
+        {
+            enemyAI = GetComponentInParent<EnemyAI>();
+        }
+        if (enemyAI == null)
+        {
+            enemyAI = GetComponentInChildren<EnemyAI>();
+        }
+
+        if (enemyAI != null && enemyAI.IsFrozen)
+        {
+            return;
+        }
+
         direction.y = 0f;
         if (direction.sqrMagnitude <= 0.01f)
         {
@@ -28,9 +45,11 @@ public class EnemyKnockback : MonoBehaviour
         {
             if (activeKnockback != null)
             {
-                StopCoroutine(activeKnockback);
+                CancelActiveKnockback();
             }
 
+            activeAgent = agent;
+            agentWasStoppedBeforeKnockback = agent.isStopped;
             activeKnockback = StartCoroutine(SmoothAgentKnockback(agent, direction, force, duration));
             return;
         }
@@ -47,13 +66,34 @@ public class EnemyKnockback : MonoBehaviour
         }
     }
 
+    public void CancelForFreeze()
+    {
+        CancelActiveKnockback();
+    }
+
+    private void CancelActiveKnockback()
+    {
+        if (activeKnockback != null)
+        {
+            StopCoroutine(activeKnockback);
+            activeKnockback = null;
+        }
+
+        if (activeAgent != null && activeAgent.isOnNavMesh)
+        {
+            activeAgent.isStopped = agentWasStoppedBeforeKnockback;
+            activeAgent.velocity = Vector3.zero;
+        }
+
+        activeAgent = null;
+    }
+
     private IEnumerator SmoothAgentKnockback(
         NavMeshAgent agent,
         Vector3 direction,
         float force,
         float duration)
     {
-        bool wasStopped = agent.isStopped;
         agent.isStopped = true;
 
         float elapsed = 0f;
@@ -67,9 +107,10 @@ public class EnemyKnockback : MonoBehaviour
 
         if (agent != null && agent.isOnNavMesh)
         {
-            agent.isStopped = wasStopped;
+            agent.isStopped = agentWasStoppedBeforeKnockback;
         }
 
         activeKnockback = null;
+        activeAgent = null;
     }
 }

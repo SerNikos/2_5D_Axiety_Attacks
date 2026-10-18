@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
+[RequireComponent(typeof(NavMeshAgent))]
 public class EnemyAI : MonoBehaviour
 {
     public Transform player;
@@ -19,9 +20,18 @@ public class EnemyAI : MonoBehaviour
     public bool showRadiusSpheres = true; // Ενεργοποίηση/Απενεργοποίηση των σφαιρών
 
     private float distanceToPlayer;
+    private float nextPatrolAttemptTime;
+    private float nextChaseDestinationTime;
+    private float nextNavigationWarningTime;
+    private Vector3 lastChaseDestination;
+    private bool hasChaseDestination;
+    private bool hasReportedPatrolFailure;
+    private bool hasReportedInvalidPath;
     private Vector3 originPos;            // Το κέντρο της περιοχής περιπολίας
     private NavMeshAgent agent;
     private DepthSort2D depthSort;
+    private float frozenUntil;
+    private bool agentWasStoppedBeforeFreeze;
 
     // References για τα GameObjects των σφαιρών
     private GameObject aggroObj;
@@ -35,6 +45,8 @@ public class EnemyAI : MonoBehaviour
 
     [Header("Current State")]
     public EnemyState currentState = EnemyState.Patrol;
+
+    public bool IsFrozen => Time.time < frozenUntil;
 
     private void Awake()
     {
@@ -58,19 +70,50 @@ public class EnemyAI : MonoBehaviour
 
         currentState = EnemyState.Patrol;
 
-        // Δημιουργία των 2 ημιδιάφανων σφαιρών για το URP στο Runtime
-        CreateRuntimeSpheres();
+        if (showRadiusSpheres)
+        {
+            CreateRuntimeSpheres();
+        }
     }
 
     private void Start()
     {
         SetRandomPatrolDestination();
+        Debug.Log($"Enemy '{name}' startup navigation: speed={agent.speed}, stopped={agent.isStopped}, onNavMesh={agent.isOnNavMesh}, hasPath={agent.hasPath}, pathPending={agent.pathPending}, pathStatus={agent.pathStatus}, timeScale={Time.timeScale}, agentType={agent.agentTypeID}.", this);
     }
 
     private void Update()
     {
+        if (showRadiusSpheres && aggroObj == null && loseObj == null)
+        {
+            CreateRuntimeSpheres();
+        }
+
         // Ενημέρωση της ορατότητας των σφαιρών σε runtime αν αλλάξει η μεταβλητή από τον Inspector
         UpdateSpheresVisibility();
+
+        if (IsFrozen)
+        {
+            StopAgentMovement(false);
+            return;
+        }
+
+        if (!EnsureAgentOnNavMesh()) return;
+
+        if (frozenUntil > 0f)
+        {
+            agent.isStopped = agentWasStoppedBeforeFreeze;
+            frozenUntil = 0f;
+        }
+
+        if (player == null)
+        {
+            GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+            if (playerObject != null)
+            {
+                player = playerObject.transform;
+            }
+        }
 
         if (player == null) return;
 
@@ -87,43 +130,210 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
+    public void FreezeFor(float duration)
+    {
+        if (duration <= 0f)
+        {
+            return;
+        }
+
+        if (Time.time >= frozenUntil)
+        {
+            EnemyKnockback knockback = GetComponent<EnemyKnockback>();
+            if (knockback == null)
+            {
+                knockback = GetComponentInChildren<EnemyKnockback>();
+            }
+            if (knockback == null)
+            {
+                knockback = GetComponentInParent<EnemyKnockback>();
+            }
+
+            // Restore the state from before any shove before saving the state for the freeze.
+            if (knockback != null)
+            {
+                knockback.CancelForFreeze();
+            }
+
+            agentWasStoppedBeforeFreeze = agent != null && agent.isStopped;
+            hasChaseDestination = false;
+            nextChaseDestinationTime = 0f;
+            nextPatrolAttemptTime = 0f;
+        }
+
+        frozenUntil = Mathf.Max(frozenUntil, Time.time + duration);
+        StopAgentMovement(true);
+    }
+
+    private void StopAgentMovement(bool clearPath)
+    {
+        if (agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+
+            if (clearPath && agent.hasPath)
+            {
+                agent.ResetPath();
+            }
+        }
+    }
+
     private void UpdatePatrol()
     {
         // 1. Αν ο παίκτης πλησιάσει, άλλαξε state σε Chase
         if (distanceToPlayer <= aggroRadius)
         {
             currentState = EnemyState.Chase;
+            hasChaseDestination = false;
+            nextChaseDestinationTime = 0f;
             return;
         }
 
         // 2. Περιπολία: Μόλις φτάσει στο σημείο, διάλεξε νέο τυχαίο σημείο στο NavMesh
-        if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
+        if (!agent.pathPending &&
+            (agent.pathStatus != NavMeshPathStatus.PathComplete ||
+             !agent.hasPath ||
+             agent.remainingDistance <= agent.stoppingDistance) &&
+            Time.time >= nextPatrolAttemptTime)
         {
+            if (agent.hasPath && agent.pathStatus != NavMeshPathStatus.PathComplete)
+            {
+                WarnNavigationIssue($"patrol path is {agent.pathStatus}");
+                hasReportedInvalidPath = true;
+            }
+            else if (hasReportedInvalidPath)
+            {
+                hasReportedInvalidPath = false;
+            }
+
             SetRandomPatrolDestination();
         }
     }
 
     private void UpdateChase()
     {
-        agent.SetDestination(player.position);
+        bool playerMoved = !hasChaseDestination ||
+                           (player.position - lastChaseDestination).sqrMagnitude >= 0.25f;
+        bool pathNeedsRetry = !agent.pathPending &&
+                              (!agent.hasPath || agent.pathStatus != NavMeshPathStatus.PathComplete);
+
+        if (agent.isOnNavMesh &&
+            Time.time >= nextChaseDestinationTime &&
+            (playerMoved || pathNeedsRetry))
+        {
+            nextChaseDestinationTime = Time.time + 0.25f;
+            if (!agent.SetDestination(player.position))
+            {
+                WarnNavigationIssue("could not set a chase destination");
+            }
+            else
+            {
+                lastChaseDestination = player.position;
+                hasChaseDestination = true;
+            }
+        }
+
+        if (!agent.pathPending && agent.hasPath && agent.pathStatus != NavMeshPathStatus.PathComplete)
+        {
+            WarnNavigationIssue($"chase path is {agent.pathStatus}");
+        }
+        else if (!agent.pathPending && !agent.hasPath)
+        {
+            WarnNavigationIssue("chase has no path after requesting a destination");
+        }
 
         // Αν ο παίκτης φύγει πολύ μακριά, γύρνα αμέσως σε Patrol
         if (distanceToPlayer >= losePlayerRadius)
         {
             currentState = EnemyState.Patrol;
+            hasChaseDestination = false;
             SetRandomPatrolDestination();
         }
     }
 
     private void SetRandomPatrolDestination()
     {
-        Vector3 randomPoint = originPos + Random.insideUnitSphere * patrolRange;
-        NavMeshHit hit;
+        if (!EnsureAgentOnNavMesh()) return;
 
-        if (NavMesh.SamplePosition(randomPoint, out hit, 2.0f, NavMesh.AllAreas))
+        nextPatrolAttemptTime = Time.time + 1f;
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
         {
-            agent.SetDestination(hit.position);
+            agentTypeID = agent.agentTypeID,
+            areaMask = agent.areaMask
+        };
+
+        NavMeshHit hit;
+        bool foundNavMeshPoint = false;
+        for (int attempt = 0; attempt < 16; attempt++)
+        {
+            Vector3 randomPoint = originPos + new Vector3(
+                Random.Range(-patrolRange, patrolRange),
+                0f,
+                Random.Range(-patrolRange, patrolRange));
+
+            if (!NavMesh.SamplePosition(randomPoint, out hit, Mathf.Max(agent.height, patrolRange), filter))
+            {
+                continue;
+            }
+
+            foundNavMeshPoint = true;
+            if (agent.SetDestination(hit.position))
+            {
+                hasReportedPatrolFailure = false;
+                return;
+            }
         }
+
+        if (!hasReportedPatrolFailure)
+        {
+            WarnNavigationIssue(foundNavMeshPoint
+                ? "found NavMesh points but SetDestination rejected all patrol destinations"
+                : $"could not sample a patrol point within {Mathf.Max(agent.height, patrolRange):0.##} units of the sampled positions");
+            hasReportedPatrolFailure = true;
+        }
+    }
+
+    private bool EnsureAgentOnNavMesh()
+    {
+        if (agent == null || !agent.isActiveAndEnabled)
+        {
+            return false;
+        }
+
+        if (agent.isOnNavMesh)
+        {
+            return true;
+        }
+
+        NavMeshHit hit;
+        float sampleDistance = Mathf.Max(2f, agent.height);
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
+        {
+            agentTypeID = agent.agentTypeID,
+            areaMask = agent.areaMask
+        };
+
+        if (NavMesh.SamplePosition(transform.position, out hit, sampleDistance, filter) &&
+            agent.Warp(hit.position))
+        {
+            originPos = hit.position;
+            return agent.isOnNavMesh;
+        }
+
+        WarnNavigationIssue($"agent is not on a NavMesh and could not warp to one (agent type {agent.agentTypeID})");
+        return false;
+    }
+
+    private void WarnNavigationIssue(string message)
+    {
+        if (Time.time < nextNavigationWarningTime)
+        {
+            return;
+        }
+
+        nextNavigationWarningTime = Time.time + 5f;
+        Debug.LogWarning($"Enemy '{name}': {message}. Position: {transform.position}, speed={agent.speed}, stopped={agent.isStopped}, onNavMesh={agent.isOnNavMesh}, hasPath={agent.hasPath}, pathPending={agent.pathPending}, pathStatus={agent.pathStatus}, timeScale={Time.timeScale}, agentType={agent.agentTypeID}.", this);
     }
 
     // Δημιουργεί 2 ημιδιάφανες σφαίρες ως children του εχθρού για το Runtime
@@ -180,6 +390,12 @@ public class EnemyAI : MonoBehaviour
 
         // Χρήση Unlit shader για να μην επηρεάζεται από το φως/σκιές
         Shader urpShader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (urpShader == null)
+        {
+            rend.enabled = false;
+            Debug.LogWarning("Universal Render Pipeline/Unlit shader is unavailable in this build; disabling the optional enemy radius visual.", this);
+            return;
+        }
 
         Material mat = new Material(urpShader);
 
