@@ -153,6 +153,13 @@ public class FireballProjectile : MonoBehaviour
         }
 
         direction.Normalize();
+        // Report the impact to the enemy before applying this spell's knockback.
+        EnemyAI enemyAI = enemy.GetComponent<EnemyAI>();
+        if (enemyAI != null)
+        {
+            enemyAI.PlaySpellHitAnimation();
+        }
+
         PushEnemy(enemy, direction);
         ApplyGrassImpact(impactPoint);
         SpawnImpactEffect(impactPoint);

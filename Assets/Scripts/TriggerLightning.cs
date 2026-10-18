@@ -387,6 +387,13 @@ public class TriggerLightning : MonoBehaviour
                 continue;
             }
 
+            // One visual hit reaction is sent per enemy, even when several colliders overlap the strike.
+            EnemyAI enemyAI = enemy.GetComponent<EnemyAI>();
+            if (enemyAI != null)
+            {
+                enemyAI.PlaySpellHitAnimation();
+            }
+
             Vector3 direction = enemy.position - impactPosition;
             direction.y = 0f;
 

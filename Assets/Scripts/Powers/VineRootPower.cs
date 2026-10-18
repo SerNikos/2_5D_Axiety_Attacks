@@ -1,22 +1,34 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using DG.Tweening;
 
 public class VineRootPower : MonoBehaviour
 {
     [Header("Vine Root")]
-    // How long enemies stay frozen and how long the temporary vine visual remains visible.
-    [SerializeField, Min(0.1f)] private float freezeDuration = 3f;
+    // How long enemies stay frozen and wrapped vines remain still after the wrap finishes.
+    [SerializeField, Min(0.1f)] private float freezeDuration = 4f;
     // Dimensions of the box in front of the player that can catch enemies.
-    [SerializeField, Min(0.1f)] private float areaLength = 3.5f;
-    [SerializeField, Min(0.1f)] private float areaWidth = 2f;
+    [SerializeField, Min(0.1f)] private float areaLength = 8f;
+    [SerializeField, Min(0.1f)] private float areaWidth = 3.2f;
     [SerializeField, Min(0.1f)] private float areaHeight = 2.5f;
+    // Side-to-side amplitude of the long sine-shaped tendril path.
+    [SerializeField, Min(0f)] private float sineWaveAmplitude = 0.65f;
+    // Up-and-down amplitude lifts the traveling tendrils above dense grass.
+    [SerializeField, Min(0f)] private float sineWaveHeight = 0.8f;
+    // Raises a missed cast after it starts at the player's feet, keeping its full wave visible over grass.
+    [SerializeField, Min(0f)] private float missVineRise = 1.2f;
+    // Number of smooth side-to-side waves from the player to a target.
+    [SerializeField, Min(0f)] private float sineWaveCycles = 1.5f;
     // Time for the segmented tendrils to extend from the player toward their target.
     [SerializeField, Min(0f)] private float sproutDuration = 1f;
     // Small gap between the enemy's collider and the wrapping vines.
     [SerializeField, Min(0f)] private float wrapClearance = 0.035f;
     // Number of turns the tendrils make while spiraling up around the enemy.
     [SerializeField, Range(1f, 4f)] private float wrapTurns = 2.5f;
+    // Varies each tendril's spiral length so the three vines do not all end together.
+    [SerializeField, Range(0f, 2f)] private float wrapTurnVariation = 0.75f;
     // Each tendril chooses a base diameter from this range when the power activates.
     [SerializeField, Min(0.01f)] private float minimumVineDiameter = 0.18f;
     [SerializeField, Min(0.01f)] private float maximumVineDiameter = 0.3f;
@@ -27,11 +39,18 @@ public class VineRootPower : MonoBehaviour
     // Number of sides around the tube; more sides make the vine look smoother.
     [SerializeField, Range(5, 12)] private int tubeSides = 8;
 
+    [Header("Cooldown")]
+    // Matches the radial cooldown display used by the other player powers.
+    [SerializeField] private Image vineCooldownImage;
+    [SerializeField, Min(0f)] private float cooldownDuration = 0.5f;
+
     [Header("Anxiety Availability")]
     // Optional reference; when assigned, the power is blocked if spells are unavailable.
     [SerializeField] private AnxietyBar anxietyBar;
 
     private PlayerController playerController;
+    private float cooldownRemaining;
+    private bool vineOnCooldown;
 
     private void Awake()
     {
@@ -43,15 +62,39 @@ public class VineRootPower : MonoBehaviour
         {
             anxietyBar = FindObjectOfType<AnxietyBar>();
         }
+
+        // This power is added at runtime, so find its existing third-slot UI image by name.
+        if (vineCooldownImage == null)
+        {
+            GameObject cooldownObject = GameObject.Find("Image_Spell3");
+            if (cooldownObject != null)
+            {
+                vineCooldownImage = cooldownObject.GetComponent<Image>();
+            }
+        }
+
+        if (vineCooldownImage != null)
+        {
+            vineCooldownImage.type = Image.Type.Filled;
+            vineCooldownImage.fillMethod = Image.FillMethod.Radial360;
+            vineCooldownImage.fillAmount = 1f;
+        }
     }
 
     private void Update()
     {
+        UpdateCooldown();
+
         // Support both the number-row 3 and numeric-keypad 3.
         if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
         {
             // Do not activate spells while the anxiety system says they are unavailable.
             if (anxietyBar != null && !anxietyBar.SpellsAvailable)
+            {
+                return;
+            }
+
+            if (vineOnCooldown)
             {
                 return;
             }
@@ -73,12 +116,16 @@ public class VineRootPower : MonoBehaviour
 
         // OverlapBox takes half-sizes, so each Inspector dimension is divided by two.
         // Rotating the box makes its long axis follow the direction the player is facing.
-        Collider[] colliders = Physics.OverlapBox(
+        Collider[] boxColliders = Physics.OverlapBox(
             center,
             new Vector3(areaWidth * 0.5f, areaHeight * 0.5f, areaLength * 0.5f),
             Quaternion.LookRotation(direction));
+        float broadphaseRadius = areaLength + areaWidth + areaHeight;
+        Collider[] nearbyColliders = Physics.OverlapSphere(center, broadphaseRadius);
+        List<Collider> colliders = new List<Collider>(boxColliders);
+        colliders.AddRange(nearbyColliders);
 
-        // One enemy can have several colliders; the set prevents freezing it repeatedly.
+        // Collect each enemy once, even if several of its colliders overlap the attack area.
         HashSet<EnemyAI> uniqueEnemies = new HashSet<EnemyAI>();
         List<EnemyAI> affectedEnemies = new List<EnemyAI>();
         foreach (Collider hitCollider in colliders)
@@ -90,19 +137,112 @@ public class VineRootPower : MonoBehaviour
                 enemy = hitCollider.GetComponentInChildren<EnemyAI>();
             }
 
-            if (enemy != null && uniqueEnemies.Add(enemy))
+            if (enemy != null)
             {
-                // EnemyAI pauses its NavMeshAgent and restores its prior stopped state later.
-                enemy.FreezeFor(freezeDuration);
-                affectedEnemies.Add(enemy);
+                uniqueEnemies.Add(enemy);
             }
         }
 
-        // Aim the visual at caught enemies, or show a forward-reaching effect if none were caught.
-        CreateVineVisual(direction, right, affectedEnemies);
+        foreach (EnemyAI enemy in uniqueEnemies)
+        {
+            if (!IsWithinVineArea(GetEnemyBounds(enemy), direction, right))
+            {
+                continue;
+            }
+
+            affectedEnemies.Add(enemy);
+        }
+
+        float effectLifetime = GetVineEffectLifetime();
+
+        // Keep enemies restrained while the tendrils grow and for the post-wrap hold.
+        foreach (EnemyAI enemy in affectedEnemies)
+        {
+            enemy.FreezeFor(effectLifetime);
+        }
+
+        // Grow the vines immediately; each enemy reacts when a tendril begins curling around it.
+        CreateVineVisual(direction, right, affectedEnemies, effectLifetime);
+        StartCooldown();
     }
 
-    private void CreateVineVisual(Vector3 direction, Vector3 right, List<EnemyAI> affectedEnemies)
+    private float GetVineEffectLifetime()
+    {
+        // Add the tendril growth time so the configured hold starts after the wrap completes.
+        float holdDuration = Mathf.Max(0f, freezeDuration);
+        float growthDuration = Mathf.Min(Mathf.Max(0f, sproutDuration), holdDuration);
+        return growthDuration + holdDuration;
+    }
+
+    private bool IsWithinVineArea(Bounds bounds, Vector3 direction, Vector3 right)
+    {
+        Vector3 offset = bounds.center - transform.position;
+        offset.y = 0f;
+        float forwardDistance = Vector3.Dot(offset, direction);
+        float sideDistance = Vector3.Dot(offset, right);
+        float forwardExtent = Mathf.Abs(direction.x) * bounds.extents.x +
+            Mathf.Abs(direction.z) * bounds.extents.z;
+        float sideExtent = Mathf.Abs(right.x) * bounds.extents.x +
+            Mathf.Abs(right.z) * bounds.extents.z;
+        float lowerHeight = bounds.min.y;
+        float upperHeight = bounds.max.y;
+        float forwardSideAllowance = Mathf.Max(areaWidth * 0.5f, Mathf.Max(0f, forwardDistance) * 0.45f);
+
+        return forwardDistance + forwardExtent >= 0f &&
+            forwardDistance - forwardExtent <= areaLength &&
+            Mathf.Abs(sideDistance) - sideExtent <= forwardSideAllowance &&
+            upperHeight >= transform.position.y &&
+            lowerHeight <= transform.position.y + areaHeight;
+    }
+
+    private void StartCooldown()
+    {
+        cooldownRemaining = Mathf.Max(0f, cooldownDuration);
+        vineOnCooldown = cooldownRemaining > 0f;
+
+        if (vineCooldownImage == null)
+        {
+            return;
+        }
+
+        DOTween.Kill(vineCooldownImage);
+        vineCooldownImage.fillAmount = 0f;
+
+        if (cooldownRemaining <= 0f)
+        {
+            vineCooldownImage.fillAmount = 1f;
+            return;
+        }
+
+        DOTween.To(
+                () => vineCooldownImage.fillAmount,
+                fillAmount => vineCooldownImage.fillAmount = fillAmount,
+                1f,
+                cooldownRemaining)
+            .SetEase(Ease.Linear)
+            .SetTarget(vineCooldownImage);
+    }
+
+    private void UpdateCooldown()
+    {
+        if (!vineOnCooldown)
+        {
+            return;
+        }
+
+        cooldownRemaining -= Time.deltaTime;
+        if (cooldownRemaining <= 0f)
+        {
+            cooldownRemaining = 0f;
+            vineOnCooldown = false;
+        }
+    }
+
+    private void CreateVineVisual(
+        Vector3 direction,
+        Vector3 right,
+        List<EnemyAI> affectedEnemies,
+        float effectLifetime)
     {
         // This parent object lets Unity remove all generated vine pieces together.
         GameObject visual = new GameObject("Vine Root Effect");
@@ -113,6 +253,14 @@ public class VineRootPower : MonoBehaviour
         if (shader == null)
         {
             shader = Shader.Find("Standard");
+        }
+        if (shader == null)
+        {
+            shader = Shader.Find("Unlit/Color");
+        }
+        if (shader == null)
+        {
+            shader = Shader.Find("Sprites/Default");
         }
 
         Material vineMaterial = shader != null ? new Material(shader) : null;
@@ -129,16 +277,31 @@ public class VineRootPower : MonoBehaviour
             {
                 vineMaterial.SetColor("_Color", vineColor);
             }
+
+            vineMaterial.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+            if (vineMaterial.HasProperty("_ZWrite"))
+            {
+                vineMaterial.SetInt("_ZWrite", 1);
+            }
         }
 
         if (affectedEnemies.Count == 0)
         {
-            // Keep the spell visible when it misses by curling the vines at the reach limit.
+            // When no enemy is hit, let the tendrils extend forward without curling around anything.
             Vector3 fallbackTarget = transform.position + direction * areaLength;
             Bounds fallbackBounds = new Bounds(
                 fallbackTarget + Vector3.up * (areaHeight * 0.5f),
                 new Vector3(0.45f, areaHeight, 0.45f));
-            CreateVineBundle(visual.transform, transform.position, fallbackBounds, null, right, vineMaterial, 0);
+            CreateVineBundle(
+                visual.transform,
+                transform.position,
+                fallbackBounds,
+                null,
+                right,
+                vineMaterial,
+                effectLifetime,
+                0,
+                false);
         }
         else
         {
@@ -153,15 +316,17 @@ public class VineRootPower : MonoBehaviour
                     affectedEnemies[targetIndex].transform,
                     right,
                     vineMaterial,
-                    targetIndex);
+                    effectLifetime,
+                    targetIndex,
+                    true);
             }
         }
 
-        // Clean up the visual and its material after the freeze effect ends.
-        Destroy(visual, freezeDuration);
+        // Keep the wrapped pose for the full post-wrap freeze duration, then clean it up.
+        Destroy(visual, effectLifetime);
         if (vineMaterial != null)
         {
-            Destroy(vineMaterial, freezeDuration);
+            Destroy(vineMaterial, effectLifetime);
         }
     }
 
@@ -202,7 +367,9 @@ public class VineRootPower : MonoBehaviour
         Transform targetTransform,
         Vector3 playerRight,
         Material material,
-        int targetIndex)
+        float effectLifetime,
+        int targetIndex,
+        bool wrapAroundTarget)
     {
         const int tendrilCount = 3;
         const int groundSegmentCount = 12;
@@ -211,7 +378,6 @@ public class VineRootPower : MonoBehaviour
         float playerGroundHeight = GetGroundHeight(playerPosition, null, playerPosition.y);
         float targetGroundHeight = GetGroundHeight(targetPosition, targetTransform, playerGroundHeight);
         Vector3 targetBase = new Vector3(targetPosition.x, targetGroundHeight, targetPosition.z);
-        float wrapHeight = Mathf.Max(0.5f, targetBounds.size.y);
         float enemyRadius = Mathf.Max(targetBounds.extents.x, targetBounds.extents.z);
 
         // Route along the ground to the enemy's feet, then use its bounds to form the wrap.
@@ -228,15 +394,21 @@ public class VineRootPower : MonoBehaviour
         float growDuration = Mathf.Min(sproutDuration, freezeDuration);
         float minDiameter = Mathf.Min(minimumVineDiameter, maximumVineDiameter);
         float maxDiameter = Mathf.Max(minimumVineDiameter, maximumVineDiameter);
+        EnemyAI targetEnemy = wrapAroundTarget && targetTransform != null
+            ? targetTransform.GetComponent<EnemyAI>()
+            : null;
 
         for (int tendril = 0; tendril < tendrilCount; tendril++)
         {
             float lane = tendril - (tendrilCount - 1) * 0.5f;
+            float tendrilWrapTurns = Mathf.Max(0.5f, wrapTurns + Random.Range(-wrapTurnVariation, wrapTurnVariation));
             // Follow the enemy's footprint closely, with only a small gap between tendrils.
             float radius = Mathf.Max(0.06f, enemyRadius + wrapClearance + tendril * 0.015f);
             float rootDiameter = Random.Range(minDiameter, maxDiameter);
             float diameterSeed = Random.Range(0f, 1000f);
             float groundLift = rootDiameter * 0.5f + 0.01f;
+            float wrapStartHeight = targetGroundHeight + groundLift + (wrapAroundTarget ? 0f : missVineRise);
+            float wrapEndHeight = Mathf.Max(targetBounds.max.y, wrapStartHeight);
             Vector3 start = playerPosition
                 + routeDirection * 0.25f
                 + playerRight * (lane * areaWidth * 0.12f);
@@ -244,32 +416,40 @@ public class VineRootPower : MonoBehaviour
 
             // End the crawling section where the wrapping loop begins around the enemy.
             Vector3 wrapStart = targetBase + routeSide * radius + Vector3.up * groundLift;
-            List<Vector3> points = new List<Vector3>(groundSegmentCount + wrapSegmentCount + 1)
+            int groundPathSegmentCount = wrapAroundTarget ? groundSegmentCount : 48;
+            List<Vector3> points = new List<Vector3>(groundPathSegmentCount + wrapSegmentCount + 1)
             {
                 start
             };
 
             // Create a gently winding ground path from the player to the target.
-            for (int segment = 1; segment <= groundSegmentCount; segment++)
+            for (int segment = 1; segment <= groundPathSegmentCount; segment++)
             {
-                float progress = (float)segment / groundSegmentCount;
-                float sideWiggle = Mathf.Sin(progress * Mathf.PI * 3f + tendril + targetIndex) * 0.18f;
+                float progress = (float)segment / groundPathSegmentCount;
+                float phaseOffset = (tendril - (tendrilCount - 1) * 0.5f) * 0.6f + targetIndex * 0.35f;
+                float sideWiggle = Mathf.Sin(progress * Mathf.PI * 2f * sineWaveCycles + phaseOffset)
+                    * sineWaveAmplitude * Mathf.Sin(progress * Mathf.PI);
                 Vector3 point = Vector3.Lerp(start, wrapStart, progress)
-                    + routeSide * (sideWiggle * Mathf.Sin(progress * Mathf.PI));
-                point.y = Mathf.Lerp(start.y, wrapStart.y, progress);
+                    + routeSide * sideWiggle;
+                float verticalWave = Mathf.Sin(progress * Mathf.PI * 2f * sineWaveCycles + phaseOffset)
+                    * sineWaveHeight * Mathf.Sin(progress * Mathf.PI);
+                point.y = Mathf.Lerp(start.y, wrapStart.y, progress) + verticalWave;
                 points.Add(point);
             }
 
-            // Continue from the ground path into an upward spiral that circles the enemy.
-            for (int segment = 1; segment <= wrapSegmentCount; segment++)
+            // Only add an upward spiral when this tendril has an enemy to wrap around.
+            if (wrapAroundTarget)
             {
-                float progress = (float)segment / wrapSegmentCount;
-                float angle = progress * Mathf.PI * 2f * wrapTurns;
-                Vector3 point = targetBase
-                    + routeSide * (Mathf.Cos(angle) * radius)
-                    + routeDirection * (Mathf.Sin(angle) * radius)
-                    + Vector3.up * (0.04f + wrapHeight * progress);
-                points.Add(point);
+                for (int segment = 1; segment <= wrapSegmentCount; segment++)
+                {
+                    float progress = (float)segment / wrapSegmentCount;
+                    float angle = progress * Mathf.PI * 2f * tendrilWrapTurns;
+                    Vector3 point = targetBase
+                        + routeSide * (Mathf.Cos(angle) * radius)
+                        + routeDirection * (Mathf.Sin(angle) * radius)
+                        + Vector3.up * Mathf.Lerp(wrapStartHeight, wrapEndHeight, progress);
+                    points.Add(point);
+                }
             }
 
             // Build one continuous tube and reveal it progressively along the complete path.
@@ -278,11 +458,13 @@ public class VineRootPower : MonoBehaviour
                 points,
                 material,
                 growDuration,
+                effectLifetime,
                 rootDiameter,
                 diameterSeed,
                 minDiameter,
                 maxDiameter,
-                groundSegmentCount));
+                wrapAroundTarget ? groundSegmentCount : -1,
+                tendril == 0 ? targetEnemy : null));
         }
     }
 
@@ -329,11 +511,13 @@ public class VineRootPower : MonoBehaviour
         List<Vector3> centerline,
         Material material,
         float growDuration,
+        float effectLifetime,
         float rootDiameter,
         float diameterSeed,
         float minDiameter,
         float maxDiameter,
-        int groundSegmentCount)
+        int groundSegmentCount,
+        EnemyAI enemyToHurtWhenWrapping)
     {
         // A single mesh removes the visible joins between the old cylinder segments.
         GameObject vine = new GameObject("Continuous Vine Tendril");
@@ -348,19 +532,32 @@ public class VineRootPower : MonoBehaviour
         renderer.receiveShadows = false;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-        // Dispose of the generated mesh along with the temporary visual effect.
-        Destroy(mesh, freezeDuration);
+        // Dispose of the generated mesh when its parent vine effect expires.
+        Destroy(mesh, effectLifetime);
 
         List<Vector3> visiblePath = new List<Vector3>(centerline.Count);
         List<Vector3> vertices = new List<Vector3>(centerline.Count * tubeSides + 2);
         List<int> triangles = new List<int>(centerline.Count * tubeSides * 6);
         float elapsed = 0f;
+        bool triggeredHurtAtContact = false;
 
         // Grow from the player to the target by rebuilding only the portion already reached.
         while (vine != null && mesh != null)
         {
             float rawProgress = growDuration <= 0f ? 1f : Mathf.Clamp01(elapsed / growDuration);
             float progress = Mathf.SmoothStep(0f, 1f, rawProgress);
+
+            // Play the hurt reaction when the lead tendril reaches the enemy's wrap boundary.
+            if (!triggeredHurtAtContact && enemyToHurtWhenWrapping != null && groundSegmentCount >= 0)
+            {
+                float contactProgress = (float)groundSegmentCount / (centerline.Count - 1);
+                if (progress >= contactProgress)
+                {
+                    enemyToHurtWhenWrapping.PlaySpellHitAnimation();
+                    triggeredHurtAtContact = true;
+                }
+            }
+
             UpdateVineMesh(
                 mesh,
                 centerline,
@@ -464,13 +661,16 @@ public class VineRootPower : MonoBehaviour
             Vector3 center = visiblePath[ring] - worldOrigin;
 
             // Keep the lower surface of the crawling section resting on the sampled ground.
-            if (ringPathPosition <= groundSegmentCount)
+            if (groundSegmentCount > 0 && ringPathPosition <= groundSegmentCount)
             {
-                float startGround = centerline[0].y - rootDiameter * 0.5f - 0.01f;
-                float targetGround = centerline[groundSegmentCount].y - rootDiameter * 0.5f - 0.01f;
-                float groundProgress = ringPathPosition / groundSegmentCount;
-                float groundHeight = Mathf.Lerp(startGround, targetGround, groundProgress);
-                center.y = groundHeight + radius + 0.005f - worldOrigin.y;
+                if (groundSegmentCount > 0)
+                {
+                    float startGround = centerline[0].y - rootDiameter * 0.5f - 0.01f;
+                    float targetGround = centerline[groundSegmentCount].y - rootDiameter * 0.5f - 0.01f;
+                    float groundProgress = ringPathPosition / groundSegmentCount;
+                    float groundHeight = Mathf.Lerp(startGround, targetGround, groundProgress);
+                    center.y = groundHeight + radius + 0.005f - worldOrigin.y;
+                }
             }
 
             for (int side = 0; side < tubeSides; side++)

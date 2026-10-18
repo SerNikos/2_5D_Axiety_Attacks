@@ -19,6 +19,14 @@ public class EnemyAI : MonoBehaviour
     [Header("Visualization Settings")]
     public bool showRadiusSpheres = true; // Ενεργοποίηση/Απενεργοποίηση των σφαιρών
 
+    [Header("Sprite Animation")]
+    [SerializeField, Tooltip("Assign in order: slime_walk_0001, slime_walk_0002, slime_walk_0003, slime_walk_0002.")]
+    private Sprite[] idleAnimationFrames = new Sprite[4];
+    [SerializeField, Tooltip("Assign hurt_002 and hurt_003; one is selected randomly on each spell hit.")]
+    private Sprite[] hurtAnimationFrames = new Sprite[2];
+    [SerializeField, Min(0.01f)] private float idleFrameDuration = 0.18f;
+    [SerializeField, Min(0f)] private float hurtAnimationDuration = 0.35f;
+
     private float distanceToPlayer;
     private float nextPatrolAttemptTime;
     private float nextChaseDestinationTime;
@@ -30,6 +38,13 @@ public class EnemyAI : MonoBehaviour
     private Vector3 originPos;            // Το κέντρο της περιοχής περιπολίας
     private NavMeshAgent agent;
     private DepthSort2D depthSort;
+    private SpriteRenderer enemySpriteRenderer;
+    private Color originalSpriteColor;
+    private float idleFrameElapsed;
+    private float hurtAnimationEndsAt;
+    private int idleFrameIndex;
+    private bool isPlayingHurtAnimation;
+    private bool isUsingFallbackHurtTint;
     private float frozenUntil;
     private bool agentWasStoppedBeforeFreeze;
 
@@ -51,7 +66,16 @@ public class EnemyAI : MonoBehaviour
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
+        // Find the renderer on the enemy's visual child so the AI root can stay collider-focused.
+        enemySpriteRenderer = GetComponentInChildren<SpriteRenderer>(true);
+        if (enemySpriteRenderer != null)
+        {
+            originalSpriteColor = enemySpriteRenderer.color;
+        }
         originPos = transform.position;
+
+        // Start on the first idle image when frames have been assigned in the Inspector.
+        ApplyIdleAnimationFrame();
 
         if (agent != null)
         {
@@ -84,6 +108,9 @@ public class EnemyAI : MonoBehaviour
 
     private void Update()
     {
+        // Keep sprite animation independent from navigation and freeze state.
+        UpdateSpriteAnimation();
+
         if (showRadiusSpheres && aggroObj == null && loseObj == null)
         {
             CreateRuntimeSpheres();
@@ -163,6 +190,103 @@ public class EnemyAI : MonoBehaviour
 
         frozenUntil = Mathf.Max(frozenUntil, Time.time + duration);
         StopAgentMovement(true);
+    }
+
+    public void PlaySpellHitAnimation()
+    {
+        if (enemySpriteRenderer == null)
+        {
+            return;
+        }
+
+        enemySpriteRenderer.color = originalSpriteColor;
+        isUsingFallbackHurtTint = false;
+
+        // Select a valid hurt image at random, skipping any frame slots not yet assigned.
+        Sprite hurtFrame = null;
+        if (hurtAnimationFrames != null && hurtAnimationFrames.Length > 0)
+        {
+            int startIndex = Random.Range(0, hurtAnimationFrames.Length);
+            for (int offset = 0; offset < hurtAnimationFrames.Length; offset++)
+            {
+                hurtFrame = hurtAnimationFrames[(startIndex + offset) % hurtAnimationFrames.Length];
+                if (hurtFrame != null)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (hurtFrame != null)
+        {
+            enemySpriteRenderer.sprite = hurtFrame;
+        }
+        else
+        {
+            // Give a visible hit cue until hurt sprites are assigned in the Inspector.
+            Color hurtTint = Color.Lerp(originalSpriteColor, Color.red, 0.75f);
+            hurtTint.a = originalSpriteColor.a;
+            enemySpriteRenderer.color = hurtTint;
+            isUsingFallbackHurtTint = true;
+        }
+
+        hurtAnimationEndsAt = Time.time + hurtAnimationDuration;
+        isPlayingHurtAnimation = true;
+    }
+
+    private void UpdateSpriteAnimation()
+    {
+        // Hold the hurt image briefly, then restart the idle sequence from frame one.
+        if (isPlayingHurtAnimation)
+        {
+            if (Time.time < hurtAnimationEndsAt)
+            {
+                return;
+            }
+
+            isPlayingHurtAnimation = false;
+            if (isUsingFallbackHurtTint && enemySpriteRenderer != null)
+            {
+                enemySpriteRenderer.color = originalSpriteColor;
+                isUsingFallbackHurtTint = false;
+            }
+
+            idleFrameIndex = 0;
+            idleFrameElapsed = 0f;
+            ApplyIdleAnimationFrame();
+            return;
+        }
+
+        if (enemySpriteRenderer == null || idleAnimationFrames == null || idleAnimationFrames.Length == 0)
+        {
+            return;
+        }
+
+        // Advance one configured idle frame each interval, wrapping through the supplied sequence.
+        idleFrameElapsed += Time.deltaTime;
+        if (idleFrameElapsed < idleFrameDuration)
+        {
+            return;
+        }
+
+        idleFrameElapsed %= idleFrameDuration;
+        idleFrameIndex = (idleFrameIndex + 1) % idleAnimationFrames.Length;
+        ApplyIdleAnimationFrame();
+    }
+
+    private void ApplyIdleAnimationFrame()
+    {
+        if (enemySpriteRenderer == null || idleAnimationFrames == null || idleAnimationFrames.Length == 0)
+        {
+            return;
+        }
+
+        // Ignore empty slots so missing art does not hide the current enemy sprite.
+        Sprite idleFrame = idleAnimationFrames[idleFrameIndex];
+        if (idleFrame != null)
+        {
+            enemySpriteRenderer.sprite = idleFrame;
+        }
     }
 
     private void StopAgentMovement(bool clearPath)
